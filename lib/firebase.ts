@@ -29,15 +29,28 @@ const firebaseConfig = {
   appId: getEnv('FIREBASE_APP_ID') || firebaseConfigFromFile.appId,
   measurementId: getEnv('FIREBASE_MEASUREMENT_ID') || firebaseConfigFromFile.measurementId,
   firestoreDatabaseId: getEnv('FIREBASE_FIRESTORE_DATABASE_ID') || (firebaseConfigFromFile as any).firestoreDatabaseId,
-  databaseURL: getEnv('FIREBASE_DATABASE_URL') || getEnv('DATABASE_URL') || (firebaseConfigFromFile as any).databaseURL || 'https://sample-firebase-ai-app-6c760-default-rtdb.firebaseio.com',
+  databaseURL: getEnv('FIREBASE_DATABASE_URL') || getEnv('DATABASE_URL') || (firebaseConfigFromFile as any).databaseURL || `https://${firebaseConfigFromFile.projectId}-default-rtdb.firebaseio.com`,
 };
+
+console.log('Firebase Configuration Initialized for Project:', firebaseConfig.projectId);
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-const firestoreId = (firebaseConfig as any).firestoreDatabaseId;
-export const db = (firestoreId && firestoreId !== '' && firestoreId !== '(default)')
-  ? getFirestore(app, firestoreId)
-  : getFirestore(app);
+
+// Robust Firestore Initialization
+const getDb = () => {
+  const firestoreId = firestoreConfigId();
+  if (firestoreId && firestoreId !== '' && firestoreId !== '(default)') {
+    console.log('Using custom Firestore database ID:', firestoreId);
+    return getFirestore(app, firestoreId);
+  }
+  console.log('Using default Firestore database');
+  return getFirestore(app);
+};
+
+const firestoreConfigId = () => getEnv('FIREBASE_FIRESTORE_DATABASE_ID') || (firebaseConfigFromFile as any).firestoreDatabaseId;
+
+export const db = getDb();
 export const rtdb = getDatabase(app);
 
 const provider = new GoogleAuthProvider();
@@ -91,6 +104,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
     // Securely persist Google OAuth user info & credentials in the user's Firestore document
     try {
+      console.log('Saving user document to Firestore...');
       await setDoc(doc(db, 'users', result.user.uid), {
         email: result.user.email,
         displayName: result.user.displayName,
@@ -98,6 +112,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         accessToken: cachedAccessToken,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      console.log('User document saved successfully.');
     } catch (fsErr) {
       console.error('Failed to save authenticated user / token to Firestore of sign in:', fsErr);
     }
@@ -120,7 +135,8 @@ export const getAccessToken = async (): Promise<string | null> => {
     let retries = 3;
     while (retries > 0) {
       try {
-        console.log(`Fetching token for path: users/${currentUser.uid} (Project: ${firebaseConfig.projectId})`);
+        const dbId = (db as any)._databaseId?.database || '(unknown)';
+        console.log(`Fetching token for path: users/${currentUser.uid} on DB: ${dbId}`);
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userSnap = await getDoc(userDocRef);
         if (userSnap.exists()) {
