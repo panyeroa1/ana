@@ -29,7 +29,7 @@ const firebaseConfig = {
   appId: getEnv('FIREBASE_APP_ID') || firebaseConfigFromFile.appId,
   measurementId: getEnv('FIREBASE_MEASUREMENT_ID') || firebaseConfigFromFile.measurementId,
   firestoreDatabaseId: getEnv('FIREBASE_FIRESTORE_DATABASE_ID') || (firebaseConfigFromFile as any).firestoreDatabaseId,
-  databaseURL: getEnv('FIREBASE_DATABASE_URL') || getEnv('DATABASE_URL') || (firebaseConfigFromFile as any).databaseURL || 'https://gen-lang-client-0836251512-default-rtdb.firebaseio.com',
+  databaseURL: getEnv('FIREBASE_DATABASE_URL') || getEnv('DATABASE_URL') || (firebaseConfigFromFile as any).databaseURL || 'https://sample-firebase-ai-app-6c760-default-rtdb.firebaseio.com',
 };
 
 const app = initializeApp(firebaseConfig);
@@ -115,6 +115,7 @@ export const getAccessToken = async (): Promise<string | null> => {
   const currentUser = auth.currentUser;
   if (currentUser) {
     try {
+      console.log(`Fetching token for path: users/${currentUser.uid}`);
       const userDocRef = doc(db, 'users', currentUser.uid);
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
@@ -122,10 +123,16 @@ export const getAccessToken = async (): Promise<string | null> => {
         if (data && data.accessToken) {
           cachedAccessToken = data.accessToken;
           return data.accessToken;
+        } else {
+          console.warn('User document exists but has no accessToken field');
         }
+      } else {
+        console.warn('User document does not exist in Firestore');
       }
     } catch (e) {
       console.error('Error fetching token from Firestore:', e);
+      console.log('Current Auth State UID:', currentUser.uid);
+      console.log('Database used:', db.type === 'firestore' ? (db as any)._databaseId?.database : 'unknown');
     }
   }
   return null;
