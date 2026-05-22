@@ -447,9 +447,9 @@ export const workspaceTools: FunctionCall[] = [
 export type Template = 'customer-support' | 'personal-assistant' | 'navigation-system';
 
 const toolsets: Record<Template, FunctionCall[]> = {
-  'customer-support': [...workspaceTools, ...whatsappTools],
+  'customer-support': [...customerSupportTools, ...workspaceTools, ...whatsappTools],
   'personal-assistant': [...personalAssistantTools, ...workspaceTools, ...whatsappTools],
-  'navigation-system': [...workspaceTools, ...whatsappTools],
+  'navigation-system': [...navigationSystemTools, ...workspaceTools, ...whatsappTools],
 };
 
 const systemPrompts: Record<Template, string> = {

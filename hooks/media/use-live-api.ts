@@ -230,6 +230,39 @@ export function useLiveApi({
 
         let responsePayload: any = { result: 'ok' };
         
+        if (fc.name === 'find_route') {
+            const { destination, modeOfTransport } = fc.args as any;
+            responsePayload = { status: `Finding ${modeOfTransport || 'driving'} route to ${destination}. Opening navigation map.` };
+            const uiState = await import('../../lib/state');
+            uiState.useUI.getState().setActiveOverlay('map');
+        }
+
+        if (fc.name === 'find_nearby_places') {
+            const { placeType, radius } = fc.args as any;
+            responsePayload = { status: `Searching for ${placeType} within ${radius || 5}km.` };
+            const uiState = await import('../../lib/state');
+            uiState.useUI.getState().setActiveOverlay('map');
+        }
+
+        if (fc.name === 'get_traffic_info') {
+            const { location } = fc.args as any;
+            responsePayload = { status: `Retrieving real-time traffic for ${location}.` };
+        }
+
+        if (fc.name === 'start_return') {
+            const { orderId, itemName, reason } = fc.args as any;
+            responsePayload = { status: `Return process started for ${itemName} (Order: ${orderId}). Reason: ${reason}. A representative will review this.` };
+        }
+
+        if (fc.name === 'get_order_status') {
+            const { orderId } = fc.args as any;
+            responsePayload = { status: `Order ${orderId || 'searching...'} is currently in transit. Expected delivery: 2 days.` };
+        }
+
+        if (fc.name === 'speak_to_representative') {
+            responsePayload = { status: 'Escalating to a human representative. Please stay on the line.' };
+        }
+
         if (fc.name === 'fetch_google_api') {
            const { url, method, body } = fc.args as any;
            const token = await getAccessToken();
