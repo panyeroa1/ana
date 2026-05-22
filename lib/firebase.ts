@@ -39,16 +39,13 @@ export const auth = getAuth(app);
 
 // Robust Firestore Initialization
 const getDb = () => {
-  const firestoreId = firestoreConfigId();
+  const firestoreId = getEnv('FIREBASE_FIRESTORE_DATABASE_ID') || firebaseConfigFromFile.firestoreDatabaseId;
   if (firestoreId && firestoreId !== '' && firestoreId !== '(default)') {
-    console.log('Using custom Firestore database ID:', firestoreId);
-    return getFirestore(app, firestoreId);
+    console.log('Using Firestore database ID:', firestoreId);
+    return getFirestore(app, firestoreId.trim());
   }
-  console.log('Using default Firestore database');
   return getFirestore(app);
 };
-
-const firestoreConfigId = () => getEnv('FIREBASE_FIRESTORE_DATABASE_ID') || (firebaseConfigFromFile as any).firestoreDatabaseId;
 
 export const db = getDb();
 export const rtdb = getDatabase(app);
@@ -80,11 +77,16 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Test connection on init
+  testConnection();
+  
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
+      console.log('Auth check: User is logged in:', user.uid);
       const token = await getAccessToken();
       if (onAuthSuccess) onAuthSuccess(user, token || '');
     } else {
+      console.log('Auth check: No user logged in');
       cachedAccessToken = null;
       if (onAuthFailure) onAuthFailure();
     }
@@ -136,9 +138,9 @@ export const getAccessToken = async (): Promise<string | null> => {
     while (retries > 0) {
       try {
         const dbId = (db as any)._databaseId?.database || '(unknown)';
-        console.log(`Fetching token for path: users/${currentUser.uid} on DB: ${dbId}`);
+        console.log(`Fetching token for path: users/${currentUser.uid} on DB: ${dbId} (Auth: ${currentUser.email})`);
         const userDocRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userDocRef);
+        const userSnap = await getDocFromServer(userDocRef);
         if (userSnap.exists()) {
           const data = userSnap.data();
           if (data && data.accessToken) {
@@ -151,8 +153,11 @@ export const getAccessToken = async (): Promise<string | null> => {
           console.warn('User document does not exist in Firestore');
         }
         break; // Success or known empty state
-      } catch (e) {
-        console.error(`Error fetching token from Firestore (Retry ${4 - retries}):`, e);
+      } catch (e: any) {
+        console.error(`Error fetching token from Firestore (Retry ${4 - retries}, DB: ${(db as any)._databaseId?.database}):`, e);
+        if (e.code === 'permission-denied') {
+          console.error('PERMISSIONS ERROR: Check if rules are deployed to the correct database ID.');
+        }
         retries--;
         if (retries > 0) {
           await new Promise(resolve => setTimeout(resolve, 500));
