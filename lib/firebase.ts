@@ -34,8 +34,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-const firestoreId = firebaseConfig.firestoreDatabaseId || '';
-export const db = getFirestore(app, firestoreId === '' ? undefined : firestoreId); /* CRITICAL: The app will break without this line */
+const firestoreId = (firebaseConfig as any).firestoreDatabaseId;
+export const db = (firestoreId && firestoreId !== '' && firestoreId !== '(default)')
+  ? getFirestore(app, firestoreId)
+  : getFirestore(app);
 export const rtdb = getDatabase(app);
 
 const provider = new GoogleAuthProvider();
@@ -115,25 +117,34 @@ export const getAccessToken = async (): Promise<string | null> => {
   }
   const currentUser = auth.currentUser;
   if (currentUser) {
-    try {
-      console.log(`Fetching token for path: users/${currentUser.uid}`);
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      const userSnap = await getDoc(userDocRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        if (data && data.accessToken) {
-          cachedAccessToken = data.accessToken;
-          return data.accessToken;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        console.log(`Fetching token for path: users/${currentUser.uid} (Project: ${firebaseConfig.projectId})`);
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          if (data && data.accessToken) {
+            cachedAccessToken = data.accessToken;
+            return data.accessToken;
+          } else {
+            console.warn('User document exists but has no accessToken field');
+          }
         } else {
-          console.warn('User document exists but has no accessToken field');
+          console.warn('User document does not exist in Firestore');
         }
-      } else {
-        console.warn('User document does not exist in Firestore');
+        break; // Success or known empty state
+      } catch (e) {
+        console.error(`Error fetching token from Firestore (Retry ${4 - retries}):`, e);
+        retries--;
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          console.log('Current Auth State UID:', currentUser.uid);
+          console.log('Database used:', db.type === 'firestore' ? (db as any)._databaseId?.database : 'unknown');
+        }
       }
-    } catch (e) {
-      console.error('Error fetching token from Firestore:', e);
-      console.log('Current Auth State UID:', currentUser.uid);
-      console.log('Database used:', db.type === 'firestore' ? (db as any)._databaseId?.database : 'unknown');
     }
   }
   return null;
